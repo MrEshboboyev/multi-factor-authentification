@@ -37,6 +37,10 @@ public static class DomainErrors
         public static readonly Error InvalidRecoveryCode = new(
             "User.InvalidRecoveryCode",
             "Invalid recovery code.");
+        
+        public static readonly Error MfaLoginRequired = new(
+            "User.MfaLoginRequired",
+            "MFA is enabled. Please use the LoginWithMfa endpoint.");
     }
 
     #endregion

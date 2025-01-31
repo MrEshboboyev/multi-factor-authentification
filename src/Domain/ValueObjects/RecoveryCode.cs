@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Domain.Primitives;
+using Domain.Shared;
 
 namespace Domain.ValueObjects;
 
@@ -8,43 +9,24 @@ public sealed class RecoveryCode : ValueObject
 {
     #region Private fields
     
-    private readonly string _hashedValue;
+    private readonly string _value;
     
     #endregion
     
     #region Constructors
 
-    private RecoveryCode(string hashedValue, bool isHashed)
+    private RecoveryCode(string value)
     {
-        _hashedValue = hashedValue;
+        _value = value;
     }
     
     #endregion
     
     #region Factory methods
 
-    public static RecoveryCode Create(string rawCode)
+    public static Result<RecoveryCode> Create(string rawCode)
     {
-        return new RecoveryCode(Hash(rawCode), true);
-    }
-    
-    #endregion
-    
-    #region Public methods
-
-    public bool Verify(string rawCode)
-    {
-        return Hash(rawCode) == _hashedValue;
-    }
-    
-    #endregion
-    
-    #region Private methods
-
-    private static string Hash(string input)
-    {
-        return Convert.ToBase64String(
-            SHA256.HashData(Encoding.UTF8.GetBytes(input)));
+        return Result.Success(new RecoveryCode(rawCode));
     }
     
     #endregion
@@ -53,7 +35,7 @@ public sealed class RecoveryCode : ValueObject
 
     protected override IEnumerable<object> GetAtomicValues()
     {
-        yield return _hashedValue;
+        yield return _value;
     }
     
     #endregion
