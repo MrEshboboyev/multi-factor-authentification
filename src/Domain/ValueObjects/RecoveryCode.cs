@@ -7,9 +7,9 @@ namespace Domain.ValueObjects;
 
 public sealed class RecoveryCode : ValueObject
 {
-    #region Private fields
+    #region Properties
     
-    private readonly string _value;
+    public string Value { get; }
     
     #endregion
     
@@ -17,7 +17,7 @@ public sealed class RecoveryCode : ValueObject
 
     private RecoveryCode(string value)
     {
-        _value = value;
+        Value = value;
     }
     
     #endregion
@@ -31,11 +31,11 @@ public sealed class RecoveryCode : ValueObject
     
     #endregion
     
-    #region Overrrides
+    #region Overrides
 
     protected override IEnumerable<object> GetAtomicValues()
     {
-        yield return _value;
+        yield return Value;
     }
     
     #endregion
