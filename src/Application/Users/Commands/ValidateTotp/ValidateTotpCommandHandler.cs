@@ -3,27 +3,26 @@ using Application.Abstractions.Security;
 using Domain.Errors;
 using Domain.Repositories;
 using Domain.Shared;
-using Domain.ValueObjects;
 
-namespace Application.Users.Commands.LoginWithMfa;
+namespace Application.Users.Commands.ValidateTotp;
 
-internal sealed class LoginWithMfaCommandHandler(
+internal sealed class ValidateTotpCommandHandler(
     IUserRepository userRepository,
     IPasswordHasher passwordHasher,
+    IMfaProvider mfaProvider,
     IJwtProvider jwtProvider,
-    IUnitOfWork unitOfWork
-) : ICommandHandler<LoginWithMfaCommand, string>
+    IUnitOfWork unitOfWork) : ICommandHandler<ValidateTotpCommand, string>
 {
     public async Task<Result<string>> Handle(
-        LoginWithMfaCommand request,
+        ValidateTotpCommand request,
         CancellationToken cancellationToken)
     {
-        var (email, password, recoveryCode) = request;
+        var (email, password, totpCode) = request;
 
         #region Checking user exists by this email and credentials valid
 
         // Validate and create the Email value object
-        var createEmailResult = Email.Create(email);
+        var createEmailResult = Domain.ValueObjects.Email.Create(email);
         if (createEmailResult.IsFailure)
         {
             return Result.Failure<string>(
@@ -62,32 +61,20 @@ internal sealed class LoginWithMfaCommandHandler(
         
         #endregion
         
-        #region Recovery code validation
+        #region Validate TOTP code
 
-        var recoveryCodeResult = RecoveryCode.Create(recoveryCode);
-        if (recoveryCodeResult.IsFailure)
+        if (user.TotpSecret == null || !mfaProvider.ValidateTotpCode(user.TotpSecret.Value, totpCode))
         {
             user.IncrementFailedMfaAttempts();
             userRepository.Update(user);
             await unitOfWork.SaveChangesAsync(cancellationToken);
             
             return Result.Failure<string>(
-                recoveryCodeResult.Error);
-        }
-        
-        // Validate the recovery code
-        if (!user.ValidateRecoveryCode(recoveryCodeResult.Value))
-        {
-            user.IncrementFailedMfaAttempts();
-            userRepository.Update(user);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
-            
-            return Result.Failure<string>(
-                DomainErrors.User.InvalidRecoveryCode);
+                DomainErrors.User.InvalidCredentials);
         }
         
         #endregion
-
+        
         #region Reset failed attempts and generate JWT token
 
         user.ResetFailedMfaAttempts();

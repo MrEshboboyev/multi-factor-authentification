@@ -5,25 +5,24 @@ using Domain.Repositories;
 using Domain.Shared;
 using Domain.ValueObjects;
 
-namespace Application.Users.Commands.LoginWithMfa;
+namespace Application.Users.Commands.ValidateBackupCode;
 
-internal sealed class LoginWithMfaCommandHandler(
+internal sealed class ValidateBackupCodeCommandHandler(
     IUserRepository userRepository,
     IPasswordHasher passwordHasher,
     IJwtProvider jwtProvider,
-    IUnitOfWork unitOfWork
-) : ICommandHandler<LoginWithMfaCommand, string>
+    IUnitOfWork unitOfWork) : ICommandHandler<ValidateBackupCodeCommand, string>
 {
     public async Task<Result<string>> Handle(
-        LoginWithMfaCommand request,
+        ValidateBackupCodeCommand request,
         CancellationToken cancellationToken)
     {
-        var (email, password, recoveryCode) = request;
+        var (email, password, backupCode) = request;
 
         #region Checking user exists by this email and credentials valid
 
         // Validate and create the Email value object
-        var createEmailResult = Email.Create(email);
+        var createEmailResult = Domain.ValueObjects.Email.Create(email);
         if (createEmailResult.IsFailure)
         {
             return Result.Failure<string>(
@@ -62,35 +61,34 @@ internal sealed class LoginWithMfaCommandHandler(
         
         #endregion
         
-        #region Recovery code validation
+        #region Validate backup code
 
-        var recoveryCodeResult = RecoveryCode.Create(recoveryCode);
-        if (recoveryCodeResult.IsFailure)
+        var backupCodeResult = BackupCode.Create(backupCode);
+        if (backupCodeResult.IsFailure)
         {
             user.IncrementFailedMfaAttempts();
             userRepository.Update(user);
             await unitOfWork.SaveChangesAsync(cancellationToken);
             
             return Result.Failure<string>(
-                recoveryCodeResult.Error);
+                backupCodeResult.Error);
         }
         
-        // Validate the recovery code
-        if (!user.ValidateRecoveryCode(recoveryCodeResult.Value))
+        var useResult = user.UseBackupCode(backupCodeResult.Value);
+        if (useResult.IsFailure)
         {
             user.IncrementFailedMfaAttempts();
             userRepository.Update(user);
             await unitOfWork.SaveChangesAsync(cancellationToken);
             
             return Result.Failure<string>(
-                DomainErrors.User.InvalidRecoveryCode);
+                useResult.Error);
         }
         
         #endregion
+        
+        #region Update database and generate JWT token
 
-        #region Reset failed attempts and generate JWT token
-
-        user.ResetFailedMfaAttempts();
         userRepository.Update(user);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         

@@ -5,19 +5,19 @@ using Domain.Repositories;
 using Domain.Shared;
 using Domain.ValueObjects;
 
-namespace Application.Users.Commands.Login;
+namespace Application.Users.Commands.SetupTotp;
 
-internal sealed class LoginCommandHandler(
+internal sealed class SetupTotpCommandHandler(
     IUserRepository userRepository,
-    IJwtProvider jwtProvider,
-    IPasswordHasher passwordHasher
-) : ICommandHandler<LoginCommand, string>
+    IPasswordHasher passwordHasher,
+    IMfaProvider mfaProvider) : ICommandHandler<SetupTotpCommand, string>
 {
-    public async Task<Result<string>> Handle(LoginCommand request,
+    public async Task<Result<string>> Handle(
+        SetupTotpCommand request,
         CancellationToken cancellationToken)
     {
         var (email, password) = request;
-        
+
         #region Checking user exists by this email and credentials valid
 
         // Validate and create the Email value object
@@ -42,26 +42,42 @@ internal sealed class LoginCommandHandler(
 
         #endregion
 
-        #region Checking Mfa enabled
+        #region Checking Mfa for this user
         
-        if (user.IsMfaEnabled)
+        // Check if MFA is enabled
+        if (!user.IsMfaEnabled)
         {
-            // Check if device is trusted
-            // In a real implementation, we would get the device ID from the request context
-            // For now, we'll just return the MFA required error
             return Result.Failure<string>(
-                DomainErrors.User.MfaLoginRequired);
+                DomainErrors.User.MfaNotEnabled);
         }
         
         #endregion
         
-        #region Generate token
+        #region Generate TOTP secret
 
-        // Generate a JWT token for the authenticated user
-        var token = jwtProvider.Generate(user);
+        var totpSecret = mfaProvider.GenerateTotpSecret();
+        var totpSecretResult = TotpSecret.Create(totpSecret);
+        if (totpSecretResult.IsFailure)
+        {
+            return Result.Failure<string>(
+                totpSecretResult.Error);
+        }
+        
+        var setResult = user.SetTotpSecret(totpSecretResult.Value);
+        if (setResult.IsFailure)
+        {
+            return Result.Failure<string>(
+                setResult.Error);
+        }
+        
+        #endregion
+        
+        #region Generate QR code URL
 
+        var qrCodeUrl = mfaProvider.GenerateQrCodeUrl("MFA App", user.Email.Value, totpSecret);
+        
         #endregion
 
-        return Result.Success(token);
+        return Result.Success(qrCodeUrl);
     }
 }
