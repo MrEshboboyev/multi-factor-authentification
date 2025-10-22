@@ -37,7 +37,19 @@ public static class DomainErrors
         public static readonly Error InvalidRecoveryCode = new(
             "User.InvalidRecoveryCode",
             "Invalid recovery code.");
-        
+            
+        public static readonly Error InvalidBackupCode = new(
+            "User.InvalidBackupCode",
+            "Invalid backup code.");
+            
+        public static readonly Error DeviceNotFound = new(
+            "User.DeviceNotFound",
+            "Device not found.");
+            
+        public static readonly Error MfaLocked = new(
+            "User.MfaLocked",
+            "MFA is temporarily locked due to too many failed attempts.");
+            
         public static readonly Error MfaLoginRequired = new(
             "User.MfaLoginRequired",
             "MFA is enabled. Please use the LoginWithMfa endpoint.");

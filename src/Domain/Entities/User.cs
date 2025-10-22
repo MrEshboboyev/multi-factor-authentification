@@ -3,6 +3,7 @@ using Domain.Events;
 using Domain.Primitives;
 using Domain.Shared;
 using Domain.ValueObjects;
+using System.Collections.Immutable;
 
 namespace Domain.Entities;
 
@@ -35,6 +36,13 @@ public sealed class User : AggregateRoot, IAuditableEntity
 
     public bool IsMfaEnabled { get; private set; }
     public RecoveryCode? RecoveryCode { get; private set; }
+    
+    // New MFA properties
+    public TotpSecret? TotpSecret { get; private set; }
+    public ImmutableList<BackupCode> BackupCodes { get; private set; } = [];
+    public ImmutableList<Device> TrustedDevices { get; private set; } = [];
+    public int FailedMfaAttempts { get; private set; }
+    public DateTime? MfaLockedUntil { get; private set; }
 
     #endregion
 
@@ -146,6 +154,11 @@ public sealed class User : AggregateRoot, IAuditableEntity
 
         IsMfaEnabled = false;
         RecoveryCode = null;
+        TotpSecret = null;
+        BackupCodes = ImmutableList<BackupCode>.Empty;
+        TrustedDevices = ImmutableList<Device>.Empty;
+        FailedMfaAttempts = 0;
+        MfaLockedUntil = null;
 
         #endregion
 
@@ -163,8 +176,174 @@ public sealed class User : AggregateRoot, IAuditableEntity
 
     public bool ValidateRecoveryCode(RecoveryCode recoveryCode)
         => RecoveryCode != null && RecoveryCode.Equals(recoveryCode);
+        
+    // New MFA methods
+    
+    public Result SetTotpSecret(TotpSecret totpSecret)
+    {
+        #region Checking MFA is enabled
 
+        if (!IsMfaEnabled)
+            return Result.Failure(
+                DomainErrors.User.MfaNotEnabled);
+
+        #endregion
+
+        TotpSecret = totpSecret;
+        return Result.Success();
+    }
+    
+    public bool ValidateTotpCode(string totpCode)
+    {
+        if (TotpSecret == null || string.IsNullOrEmpty(totpCode))
+            return false;
+            
+        // Implementation will be in the infrastructure layer
+        return false;
+    }
+    
+    public Result GenerateBackupCodes(int count = 10)
+    {
+        #region Checking MFA is enabled
+
+        if (!IsMfaEnabled)
+            return Result.Failure(
+                DomainErrors.User.MfaNotEnabled);
+
+        #endregion
+        
+        #region Generate backup codes
+
+        var backupCodes = new List<BackupCode>();
+        for (int i = 0; i < count; i++)
+        {
+            // Generate a backup code in format XXXX-XXXX
+            var code = $"{GenerateRandomString(4)}-{GenerateRandomString(4)}";
+            var backupCodeResult = BackupCode.Create(code);
+            if (backupCodeResult.IsSuccess)
+            {
+                backupCodes.Add(backupCodeResult.Value);
+            }
+        }
+        
+        BackupCodes = ImmutableList.CreateRange(backupCodes);
+
+        #endregion
+
+        return Result.Success();
+    }
+    
+    public bool ValidateBackupCode(BackupCode backupCode)
+    {
+        return BackupCodes.Contains(backupCode);
+    }
+    
+    public Result UseBackupCode(BackupCode backupCode)
+    {
+        #region Checking MFA is enabled
+
+        if (!IsMfaEnabled)
+            return Result.Failure(
+                DomainErrors.User.MfaNotEnabled);
+
+        #endregion
+        
+        #region Validate backup code
+
+        if (!ValidateBackupCode(backupCode))
+        {
+            IncrementFailedMfaAttempts();
+            return Result.Failure(DomainErrors.User.InvalidBackupCode);
+        }
+
+        #endregion
+        
+        #region Remove used backup code
+
+        BackupCodes = BackupCodes.Remove(backupCode);
+
+        #endregion
+        
+        ResetFailedMfaAttempts();
+        return Result.Success();
+    }
+    
+    public Result AddTrustedDevice(Device device)
+    {
+        #region Checking MFA is enabled
+
+        if (!IsMfaEnabled)
+            return Result.Failure(
+                DomainErrors.User.MfaNotEnabled);
+
+        #endregion
+        
+        TrustedDevices = TrustedDevices.Add(device);
+        return Result.Success();
+    }
+    
+    public bool IsDeviceTrusted(Device device)
+    {
+        return TrustedDevices.Any(d => d.Id == device.Id && d.IsTrusted);
+    }
+    
+    public Result TrustDevice(string deviceId)
+    {
+        #region Checking MFA is enabled
+
+        if (!IsMfaEnabled)
+            return Result.Failure(
+                DomainErrors.User.MfaNotEnabled);
+
+        #endregion
+        
+        var device = TrustedDevices.FirstOrDefault(d => d.Id == deviceId);
+        if (device == null)
+        {
+            return Result.Failure(
+                DomainErrors.User.DeviceNotFound);
+        }
+        
+        var updatedDevice = device.SetTrusted(true);
+        TrustedDevices = TrustedDevices.Replace(device, updatedDevice);
+        return Result.Success();
+    }
+    
+    public bool IsMfaLocked()
+    {
+        return MfaLockedUntil.HasValue && MfaLockedUntil > DateTime.UtcNow;
+    }
+    
+    public void IncrementFailedMfaAttempts()
+    {
+        FailedMfaAttempts++;
+        
+        // Lock account after 5 failed attempts for 30 minutes
+        if (FailedMfaAttempts >= 5)
+        {
+            MfaLockedUntil = DateTime.UtcNow.AddMinutes(30);
+        }
+    }
+    
+    public void ResetFailedMfaAttempts()
+    {
+        FailedMfaAttempts = 0;
+        MfaLockedUntil = null;
+    }
+    
     #endregion
 
+    #endregion
+    
+    #region Private Helpers
+    
+    private string GenerateRandomString(int length)
+    {
+        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        var random = new Random();
+        return new string(Enumerable.Repeat(chars, length)
+            .Select(s => s[random.Next(s.Length)]).ToArray());
+    }
+    
     #endregion
 }
