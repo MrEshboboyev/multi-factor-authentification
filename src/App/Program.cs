@@ -1,5 +1,7 @@
 using App.Configurations;
 using App.Middlewares;
+using Microsoft.EntityFrameworkCore;
+using Persistence;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,6 +22,13 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+}
+
+// Apply pending migrations
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    dbContext.Database.Migrate();
 }
 
 app.UseHttpsRedirection();
