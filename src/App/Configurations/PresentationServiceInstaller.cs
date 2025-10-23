@@ -11,7 +11,13 @@ public class PresentationServiceInstaller : IServiceInstaller
             .AddControllers()
             .AddApplicationPart(AssemblyReference.Assembly);
 
-        // Add OpenAPI support
-        services.AddOpenApi();
+        // Add NSwag OpenAPI support
+        services.AddOpenApiDocument(config =>
+            config.PostProcess = (settings) =>
+            {
+                settings.Info.Title = "Multi-Factor Authentication API";
+                settings.Info.Version = "v1";
+                settings.Info.Description = "Advanced Multi-Factor Authentication API with TOTP, Backup Codes, and Device Management";
+            });
     }
 }

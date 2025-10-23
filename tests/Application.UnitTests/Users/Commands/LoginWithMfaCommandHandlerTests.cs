@@ -14,6 +14,7 @@ public class LoginWithMfaCommandHandlerTests
     private readonly Mock<IUserRepository> _userRepositoryMock;
     private readonly Mock<IPasswordHasher> _passwordHasherMock;
     private readonly Mock<IJwtProvider> _jwtProviderMock;
+    private readonly Mock<IUnitOfWork> _unitOfWork;
     private readonly LoginWithMfaCommandHandler _handler;
 
     public LoginWithMfaCommandHandlerTests()
@@ -21,10 +22,12 @@ public class LoginWithMfaCommandHandlerTests
         _userRepositoryMock = new Mock<IUserRepository>();
         _passwordHasherMock = new Mock<IPasswordHasher>();
         _jwtProviderMock = new Mock<IJwtProvider>();
+        _unitOfWork = new Mock<IUnitOfWork>();
         _handler = new LoginWithMfaCommandHandler(
             _userRepositoryMock.Object,
             _passwordHasherMock.Object,
-            _jwtProviderMock.Object);
+            _jwtProviderMock.Object,
+            _unitOfWork.Object);
     }
 
     [Fact]
